@@ -379,7 +379,7 @@ or a keyword symbol.
 	   (defmethod ,fn-name ,method-lambda-list
 	     ,@(when content-type
 		 (list `(when (boundp 'hunchentoot:*reply*)
-			  (setf (hunchentoot:content-type) ,content-type))))
+			  (setf (hunchentoot:content-type*) ,content-type))))
 	     ,@body)
 	   (pushnew ,%fn (web-package-functions *web-package*))
 	   ,%fn)))))
