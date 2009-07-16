@@ -1,0 +1,14 @@
+(defpackage :<% @var package-name %>
+  (:use :cl :webfunk :cl-who :css-sexp)
+  (:export #:start-server #:stop-server))
+
+(defpackage :<% @var package-name %>.scripts
+  (:use :cl :parenscript :paren-util :paren-psos :cl-sails :<% @var package-name %> :cl-who))
+
+(in-package :<% @var package-name %>)
+
+(web-defpackage :<% @var package-name %>
+  (:lisp-packages :<% @var package-name %>)
+  (:root-function-name index))
+  
+

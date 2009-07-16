@@ -1,0 +1,38 @@
+(in-package :<% @var package-name %>)
+
+(defvar *server* nil)
+
+(defun start-server (&key port)
+  (declare (type integer port))
+  (setf *server*
+	(hunchentoot:start-server :port port
+				  :dispatch-table (list 'webfunk-hunchentoot-dispatcher))))
+
+(defun stop-server ()
+  (when *server*
+    (hunchentoot:stop-server *server*)
+    (setf *server* nil)))
+
+(web-defun (index :content-type "text/html") ()
+  (with-html-output-to-string (stream)
+    (:html
+     (:head (:title "Webfunk web site")
+     	    (:link :href (webfunk:href 'site-stylesheet) :rel "stylesheet" :type "text/css")
+	    (:script :src (webfunk:href 'scripts) :content-type "text/javascript"))
+     (:body
+       (:h1 "This is the default webfunk web page")
+       (:p "To change it, modify the main.lisp file in the src directory")))))
+
+(web-defun (site-stylesheet :content-type "text/css") ()
+  (css-sexp:with-css-output-to-string (stream) 
+    (:body
+     :background "white"
+     :font-size "85%"
+     :font-family "verdana, helvetica, arial, sans-serif")))
+
+(web-defun (scripts :content-type :javascript) ()
+  (with-output-to-string (s)
+    (paren-files:compile-script-system :<% @var package-name %>.scripts :output-stream s)))
+
+
+
