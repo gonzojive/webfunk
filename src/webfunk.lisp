@@ -14,6 +14,13 @@
    #:web-package-functions
    ;; web functions
    #:web-function
+
+   #:web-function-href
+   #:href
+
+   ;; serving files
+   #:serve-static-file
+   
    ;; hunchentoot plug-in
    #:webfunk-hunchentoot-dispatcher))
 
@@ -502,10 +509,41 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
           (t (error "Don't know what to do with parameter type ~S." parameter-type)))))
 
 
+;(defun make-function-var-instance-from-var-definition-list (list)
+;  (if (atom list)
+;      (make-instance 'web-function-var :name list
+
+(defun href (fn-designator &optional (package *web-package*))
+  (web-function-href fn-designator package))
+
+(defun web-function-href (fn-designator &optional (package *web-package*))
+  (let ((fn (if (functionp fn-designator) fn-designator (fdefinition fn-designator))))
+    (format nil "/~A/~A"
+	    (string-downcase (web-package-name package))
+	    (string-downcase (web-function-name fn)))))
 
 ;(defun make-function-var-instance-from-var-definition-list (list)
 ;  (if (atom list)
 ;      (make-instance 'web-function-var :name list
- 
 
-   
+(defun enough-url (url url-prefix)
+  "Returns the relative portion of URL relative to URL-PREFIX, similar
+to what ENOUGH-NAMESTRING does for pathnames."
+  (subseq url (or (mismatch url url-prefix) (length url-prefix))))
+
+(defun serve-static-file (given-path base-path &optional content-type)
+  (declare (optimize debug))
+  (let* ((given-path (subseq given-path 1))
+	 (script-path (ppcre:regex-replace-all "\\\\" given-path "/"))
+	 (script-path-directory (pathname-directory script-path)))
+    (unless (or (stringp script-path-directory)
+		(null script-path-directory)
+		(and (listp script-path-directory)
+		     (eq (first script-path-directory) :relative)
+		     (loop for component in (rest script-path-directory)
+                                    always (stringp component))))
+      (setf (hunchentoot:return-code) hunchentoot:+http-forbidden+)
+      (error "problem with ~S ~S" given-path script-path-directory)
+      (throw 'handler-done nil))
+      
+    (hunchentoot:handle-static-file (merge-pathnames script-path base-path) content-type)))
