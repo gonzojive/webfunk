@@ -1,0 +1,63 @@
+(in-package :<% @var package-name %>)
+
+(defvar *server* nil)
+
+;;; An acceptor that invokes the debugger on errors:
+(defclass debuggable-acceptor (hunchentoot:acceptor)
+    ())
+
+(defmethod hunchentoot:process-connection ((hunchentoot:*acceptor* debuggable-acceptor) (socket t))
+ (declare (ignore socket))
+ (handler-bind ((error #'invoke-debugger))
+   (call-next-method)))
+
+(defmethod hunchentoot:acceptor-request-dispatcher ((hunchentoot:*acceptor* debuggable-acceptor))
+ (let ((dispatcher (call-next-method)))
+   (lambda (request)
+     (handler-bind ((error #'invoke-debugger))
+       (funcall dispatcher request)))))
+
+(defun my-request-dispatcher (request)
+  (let ((dispatch-table (list 'webfunk-hunchentoot-dispatcher)))
+    (map nil
+	 #'(lambda (dispatcher)
+	     (let ((handler (funcall dispatcher request)))
+	       (when handler
+		 (return-from my-request-dispatcher (funcall handler)))))
+	 dispatch-table)))
+
+(defun start-server (&key port)
+  (declare (type integer port))
+  (setf *server* (make-instance 'debuggable-acceptor
+					  :port port
+					  :request-dispatcher 'my-request-dispatcher))
+  (hunchentoot:start *server*))
+
+(defun stop-server ()
+  (when *server*
+    (hunchentoot:stop *server*)
+    (setf *server* nil)))
+
+(web-defun (index :content-type "text/html") ()
+  (with-html-output-to-string (stream)
+    (:html
+     (:head (:title "Webfunk web site")
+     	    (:link :href (webfunk:href 'site-stylesheet) :rel "stylesheet" :type "text/css")
+	    (:script :src (webfunk:href 'scripts) :content-type "text/javascript"))
+     (:body
+       (:h1 "This is the default webfunk web page")
+       (:p "To change it, modify the main.lisp file in the src directory")))))
+
+(web-defun (site-stylesheet :content-type "text/css") ()
+  (css-sexp:with-css-output-to-string (stream) 
+    (:body
+     :background "white"
+     :font-size "85%"
+     :font-family "verdana, helvetica, arial, sans-serif")))
+
+(web-defun (scripts :content-type :javascript) ()
+  (with-output-to-string (s)
+    (paren-files:compile-script-system :<% @var package-name %>.scripts :output-stream s)))
+
+
+

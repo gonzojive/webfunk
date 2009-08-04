@@ -1,0 +1,22 @@
+(in-package :<% @var package-name %>.scripts)
+
+(defsail page-sail ()
+  ((page-title :initarg :page-title :initform "<% @var package-name %>"))
+  (:html
+   #L(cl-who:with-html-output-to-string (stream)
+       (:div
+         (:h1 :field (ps:symbol-to-js-string :page-title))
+	 (:p "Welcome to a webfunk driven web page!")))))
+
+(defun elem-by-id (id)
+  (let ((result nil))
+    (cond
+      ((slot-value document :get-element-by-id)
+       (return (paren-util:methcall :get-element-by-id document id))))))
+
+(defun on-page-load ()
+  (let* ((page (make-instance page-sail))
+	 (attach-point (slot-value js-global:document :body))
+	 (html-writer (lambda (str)
+			(setf (slot-value attach-point :inner-h-t-m-l) str))))
+    (manifest-sail page html-writer)))
