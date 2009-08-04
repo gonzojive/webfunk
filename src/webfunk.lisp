@@ -254,37 +254,42 @@ INIT-FORM-FUNCTION"
   (when (atom description) (setf description (list description)))
   ;; Standardize the web-lambda-list items into lists
   (setf web-lambda-list (mapcar #'(lambda (x) (if (atom x) (list x) x)) web-lambda-list))
-  (let* ((fn-name (if (consp description) (first description) description))
-	 (parameter-names (mapcar #'first web-lambda-list))
-	 (make-parameters-form
-	  `(list ,@(mapcar #'(lambda (param-form)
-			       (destructuring-bind (name &key initform parameter-name parameter-type)
-				   param-form
-				 (declare (ignore initform parameter-name))
-				 `(make-instance 'web-function-parameter
-						 :name ',name
-						 :parameter-type ,parameter-type)))
-			   web-lambda-list)))
+  (destructuring-bind (fn-name &key content-type)
+      description
+    (let* ((parameter-names (mapcar #'first web-lambda-list))
+	   (make-parameters-form
+	    `(list ,@(mapcar #'(lambda (param-form)
+				 (destructuring-bind (name &key initform parameter-name parameter-type)
+				     param-form
+				   (declare (ignore initform parameter-name))
+				   `(make-instance 'web-function-parameter
+						   :name ',name
+						   :parameter-type ,parameter-type)))
+			     web-lambda-list)))
 
-	 (generic-lambda-list (cons '&key parameter-names))
-	 (method-lambda-list (cons '&key parameter-names))
+	   (generic-lambda-list (append (list '&key) parameter-names (list '&allow-other-keys)))
+	   (method-lambda-list (append (list '&key) parameter-names (list '&allow-other-keys)))
 
-	 (%fn (gensym "function"))
-	 (%parameters (gensym "parameters")))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       (let* ((*web-package* (or *web-package*
-				 (cdr (assoc *package* *lisp-package-web-package-alist*))))
-	      (,%parameters ,make-parameters-form)
-	      (,%fn
-	       (defgeneric ,fn-name ,generic-lambda-list 
-		 (:generic-function-class web-function))))
+	   (%fn (gensym "function"))
+	   (%parameters (gensym "parameters"))
+	   (content-type (and content-type (stringify-content-type content-type))))
+      `(eval-when (:compile-toplevel :load-toplevel :execute)
+	 (let* ((*web-package* (sane-web-package))
+		(,%parameters ,make-parameters-form)
+		(,%fn
+		 (defgeneric ,fn-name ,generic-lambda-list 
+		   (:generic-function-class web-function))))
 
-	 (setf (web-function-parameters ,%fn) ,%parameters)
+	   (setf (web-function-parameters ,%fn) ,%parameters
+		 (web-package ,%fn) *web-package*)
 
-	 (defmethod ,fn-name ,method-lambda-list
-	   ,@body)
-	 (pushnew ,%fn (web-package-functions *web-package*))
-	 ,%fn))))
+	   (defmethod ,fn-name ,method-lambda-list
+	     ,@(when content-type
+		 (list `(when (boundp 'hunchentoot:*reply*)
+			  (setf (hunchentoot:content-type*) ,content-type))))
+	     (funcall #'(lambda () ,@body)))
+	   (pushnew ,%fn (web-package-functions *web-package*))
+	   ,%fn)))))
        ;; unfinished implementation
 
 (defun string-prefixp (string prefix)
