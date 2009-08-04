@@ -380,7 +380,7 @@ or a keyword symbol.
 	     ,@(when content-type
 		 (list `(when (boundp 'hunchentoot:*reply*)
 			  (setf (hunchentoot:content-type*) ,content-type))))
-	     ,@body)
+	     (funcall #'(lambda () ,@body)))
 	   (pushnew ,%fn (web-package-functions *web-package*))
 	   ,%fn)))))
        ;; unfinished implementation
