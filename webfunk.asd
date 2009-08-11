@@ -16,7 +16,7 @@
 ;			 (:file "heap" :depends-on ("log"))
 			 ;;(:file "sails" :depends-on ("package"))
 	       )))
-  :depends-on ("hunchentoot" "cl-ppcre" "closer-mop"))
+  :depends-on ("hunchentoot" "cl-ppcre" "closer-mop" "parse-number"))
 
 ;(defsystem persistent-heap-tests
 ;  :components ((:module "test"

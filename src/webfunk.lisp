@@ -245,6 +245,33 @@ INIT-FORM-FUNCTION"
     (setf (parameter-uri-name param)
 	  (string-downcase (symbol-name (parameter-name param))))))
 
+(defvar *content-type-keyword-string-alist*
+  `((:html . "text/html")
+    (:css . "text/css")
+    (:javascript . "text/javascript")
+    (:jpeg . "image/jpeg")
+    (:gif . "image/gif")
+    (:png . "image/png")))
+    
+
+(defun stringify-content-type (content-type)
+  "Makes a content type string from content-type, which is either a string
+or a keyword symbol.
+
+:html -> text/html
+:css  -> text/css
+:javascript -> text/javascript"
+  (typecase content-type
+    (string content-type)
+    (symbol (if (keywordp content-type)
+		(cdr (assoc content-type *content-type-keyword-string-alist*))
+		(error "non-keyword symbol")))
+    (t (error "only accepts keywords and strings but got ~S" content-type))))
+
+(defun sane-web-package ()
+  (or *web-package*
+      (cdr (assoc *package* *lisp-package-web-package-alist*))))
+
 (defmacro web-defun (description web-lambda-list &body body)
 ;;   "Defines a function intended to be called over the web (though it can be called
 ;; as if it is a normal function, too.
@@ -357,16 +384,25 @@ INIT-FORM-FUNCTION"
 
 (defmethod web-package-handler-for-request ((web-package web-package) request)
   (let ((uri (hunchentoot:request-uri request)))
-    (multiple-value-bind (prefix rest) 
+    (multiple-value-bind (prefix fn-name-string postfix) 
 	(web-package-prefix-matches-uri? web-package uri)
+      (declare (ignore postfix))
       (when prefix
-	(let* ((fn-name-string (string-upcase rest))
-	       (fn (find fn-name-string (web-package-functions web-package)
-			  :key #'(lambda (x) (symbol-name (web-function-name x))) :test #'equal)))
+	(let* ((fn-name-string (and fn-name-string (string-upcase fn-name-string)))
+	       (fn (if (and fn-name-string (< 0 (length fn-name-string)))
+		       (find fn-name-string
+			     (web-package-functions web-package)
+			     :key #'(lambda (x) (symbol-name (web-function-name x)))
+			     :test #'equal)
+		       (find-web-function web-package (web-package-root-function-name web-package)))))
 	  (if fn
-	      #'(lambda () (web-function-call-with-request fn request))
-	      #'(lambda () (format nil "~A ~A" fn-name-string (web-package-functions web-package)))))))))
-	      
+	      #'(lambda ()
+		  (let ((*web-package* web-package))
+		    (web-function-call-with-request fn request)))
+	      #'(lambda ()
+		  (format nil "~A ~A"
+			  fn-name-string
+			  (web-package-functions web-package)))))))))
 
 (defmethod web-package-handle-request ((web-package web-package) request)
   (let ((fn (web-package-handler-for-request web-package request)))
@@ -419,6 +455,8 @@ NIL unconditionally."
     (string param-string)
     (character (and (= (length param-string) 1)
                     (char param-string 0)))
+    (number (ignore-errors (parse-number:parse-number param-string)))
+    (real (ignore-errors (parse-number:parse-real-number param-string)))
     (integer (ignore-errors (parse-integer param-string :junk-allowed t)))
     (keyword (make-keyword param-string))
     (boolean t)
@@ -531,6 +569,7 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
 to what ENOUGH-NAMESTRING does for pathnames."
   (subseq url (or (mismatch url url-prefix) (length url-prefix))))
 
+#+nil
 (defun serve-static-file (given-path base-path &optional content-type)
   (declare (optimize debug))
   (let* ((given-path (subseq given-path 1))
@@ -544,6 +583,6 @@ to what ENOUGH-NAMESTRING does for pathnames."
                                     always (stringp component))))
       (setf (hunchentoot:return-code) hunchentoot:+http-forbidden+)
       (error "problem with ~S ~S" given-path script-path-directory)
-      (throw 'handler-done nil))
+      (throw 'hunchentoot::handler-done nil))
       
     (hunchentoot:handle-static-file (merge-pathnames script-path base-path) content-type)))
