@@ -469,7 +469,6 @@ or a keyword symbol.
 			  fn-name-string
 			  (web-package-functions web-package)))))))))
 	      
-
 (defmethod web-package-handle-request ((web-package web-package) request)
   (let ((fn (web-package-handler-for-request web-package request)))
     (if fn
