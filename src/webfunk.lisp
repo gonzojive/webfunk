@@ -74,6 +74,12 @@ Otherwise returns NIL"))
     :initarg :uri-aliases
     :accessor web-package-uri-aliases
     :documentation "Secondary URIs used to locate the web package.")
+   (root-function-name
+    :type (or null symbol)
+    :initform nil
+    :initarg :root-function :initarg :root-function-name
+    :accessor web-package-root-function-name
+    :documentation "When the user navigates to the root a directory, this is the function name to call.")
    (functions
     :initform nil
     :initarg :functions
@@ -88,6 +94,10 @@ Otherwise returns NIL"))
   "Finds the WEB-PACKAGE of the given name."
   (when (not (stringp name)) (setf name (string name)))
   (find name *web-packages* :key #'web-package-name :test #'string-equal))
+
+(defun find-web-function (web-package fn-name)
+  "Returns the web function with the given symbol as its name in the given web package"
+  (find fn-name (web-package-functions web-package) :key #'web-function-name))
 
 (defclass web-function (standard-generic-function)
   ((web-package :accessor web-package :initform nil :initarg :web-package)
@@ -177,8 +187,43 @@ should be handed to (make-instance WEB-PACKAGE-CLASS) as a single value,
 rather than a list.")
   (:method ((web-package-class (eql (find-class 'web-package))) initarg)
     (case initarg
-      ((or :uri :listed) t)
+      ((or :uri :listed :root-function-name :root-function) t)
       (t nil))))
+
+(defgeneric web-package-class-initarg-evaluated-p (web-package-class initarg)
+  (:documentation "Returns T if the keyword option INITARG in a defpackage form
+should be handed to (make-instance WEB-PACKAGE-CLASS) evaluated or not evaluated.")
+  (:method ((web-package-class (eql (find-class 'web-package))) initarg)
+    (case initarg
+      ((or :uri :listed :root-function-name :root-function) nil)
+      (t nil))))
+
+(defun maphash-ret (fn hash-table)
+  (let ((result nil))
+    (maphash #'(lambda (a b)
+		 (push (funcall fn a b) result))
+	     hash-table)
+    (nreverse result)))
+		 
+
+(defun merge-options-by-keyword (options &optional (return-type 'list))
+  "Given a list of option forms, which generally looks like ((:a 1 2 3 4) (:b t) (:c 3) (:a 5)),
+merges all the options with the same car together.  So it will return something like
+ ((:a 1 2 3 4 5) (:b t)).  "
+  (let ((hash (make-hash-table))
+	(options-in-order nil))
+
+    (map nil #'(lambda (option)
+		 (setf options-in-order (concatenate 'list options-in-order (rest option)))
+		 (setf (gethash (car option) hash)
+		       (concatenate 'list (gethash (car option) hash) (rest option))))
+	 options)
+    (values (case return-type
+	      (list (apply #'concatenate 'list (maphash-ret #'list hash)))
+	      (hash-table hash)
+	      (t nil))
+	    options-in-order)))
+
 
 (defmacro web-defpackage (defined-package-name &body options)
   "Defines a WEB-PACKAGE.  Options is a list of options.  An option takes the form
@@ -188,17 +233,30 @@ OPTION ::= (:uri STRING) | (:uri-aliases STRING*) | (:package-class package-clas
 :uri-aliases specifies a list of alternative URIs that also identify this package
 :package-class designates the class this macro will instantiate, default is WEB-PACKAGE."
   (let ((web-package-class
-	 (find-class (or (find :package-class options :key #'car)
+	 (find-class (or (second (find :package-class options :key #'car))
 			 'web-package))))
     (flet ((options-to-make-instance-keys (options)
+	     ;; We have to be careful so that things evaluate in the right order.
+	     ;; basically option arguments should be evaluated in the order
+	     ;; they are seen.
 	     (mapcan #'(lambda (option)
+			 (let ((singular (web-package-class-initarg-singular-p web-package-class (car option)))
+			       (evaluated (web-package-class-initarg-evaluated-p web-package-class (car option))))
 			 (list (car option)
-			       `',(funcall (if (web-package-class-initarg-singular-p
-						web-package-class (car option))
-					       #'second
-					       #'rest)
-					   option)))
-		     options)))
+			       (if singular
+				   (if evaluated (second option) `',(second option))
+				   (if evaluated `(list ,@(rest option)) `'(,@(rest option)))))))
+				       
+					    
+
+				      
+			       
+;			       `',(funcall (if (web-package-class-initarg-singular-p
+;						web-package-class (car option))
+;					       #'second
+;					       #'rest)
+;					   option)))
+			 options)))
       (let ((%package (gensym "WEB-PACKAGE"))
 	    (package-name (if (stringp defined-package-name)
 			      (intern (string-upcase defined-package-name))
@@ -277,7 +335,7 @@ or a keyword symbol.
 ;; as if it is a normal function, too.
 ;; 
 ;; DESCRIPTION is either a symbol or a list of the form:
-;; (name )
+;; (name &key content-type)
 ;; 
 ;; LAMBDA-LIST is a list where each elemtn is either a symbol VAR or a list of the form:
 ;; (var &key init-form parameter-name parameter-type)
@@ -321,7 +379,7 @@ or a keyword symbol.
 	     ,@(when content-type
 		 (list `(when (boundp 'hunchentoot:*reply*)
 			  (setf (hunchentoot:content-type*) ,content-type))))
-	     (funcall #'(lambda () ,@body)))
+	     ,@body)
 	   (pushnew ,%fn (web-package-functions *web-package*))
 	   ,%fn)))))
        ;; unfinished implementation
@@ -334,8 +392,9 @@ or a keyword symbol.
 (defmethod web-package-prefix-matches-uri? ((web-package web-package) uri)
   "Returns 2 values.  1. nil if does not match, the matched prefix if it does match.
 2.  if it does match, the rest of the uri string."
-  (cl-ppcre:register-groups-bind (firstlevel secondlevel)
-				 ("/([^\\/]*)\\/?([^\\#\\?]*)" uri)
+  (cl-ppcre:register-groups-bind (firstlevel slash secondlevel postfix)
+				 ("/([^\\/]*)(\\/)?([^\\#\\?\\/]*)?(/[^\\#\\?]*)?" uri)
+    (declare (ignore slash))
     (let* ((uri-package-name (string-upcase (hunchentoot:url-decode firstlevel)))
 	   (matching-prefix (find-if #'(lambda (package-uri)
 					 (string-prefixp uri package-uri))
@@ -343,9 +402,9 @@ or a keyword symbol.
 					   (web-package-uri-aliases web-package)))))
     (cond 
       (matching-prefix
-       (values matching-prefix secondlevel))
+       (values matching-prefix secondlevel postfix))
       ((equal uri-package-name (symbol-name (web-package-name web-package)))
-       (values (string-downcase uri-package-name) secondlevel))
+       (values (string-downcase uri-package-name) secondlevel postfix))
       (t (values nil))))))
     
 
@@ -370,12 +429,17 @@ or a keyword symbol.
 (defparameter *wiretap* *standard-output*)
 
 (defmethod web-function-transform-request-into-arguments ((fn web-function) request)
-  (mapcan #'(lambda (fn-param)
-	      (list (intern (symbol-name (parameter-name fn-param)) :keyword)
-		    (compute-parameter (parameter-uri-name fn-param)
-				       (or (parameter-type fn-param) 'string)
-				       :both)))
-	  (web-function-parameters fn)))
+  `(:postfix
+    ,(multiple-value-bind (prefix fn-name-string postfix) 
+	 (web-package-prefix-matches-uri? (web-package fn) (hunchentoot:request-uri request))
+       (declare (ignore prefix fn-name-string))
+       postfix)
+    ,@(mapcan #'(lambda (fn-param)
+		  (list (intern (symbol-name (parameter-name fn-param)) :keyword)
+			(compute-parameter (parameter-uri-name fn-param)
+					   (or (parameter-type fn-param) 'string)
+					   :both)))
+	      (web-function-parameters fn))))
     
 
 
