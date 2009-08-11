@@ -341,7 +341,6 @@ or a keyword symbol.
 ;; (var &key init-form parameter-name parameter-type)
 ;; 
 ;; description := name | name-lambda-list."
-
   
   ;; Standardize the description argument into the list form
   (when (atom description) (setf description (list description)))
@@ -380,7 +379,7 @@ or a keyword symbol.
 	     ,@(when content-type
 		 (list `(when (boundp 'hunchentoot:*reply*)
 			  (setf (hunchentoot:content-type*) ,content-type))))
-	     (funcall #'(lambda () ,@body)))
+	     ,@body)
 	   (pushnew ,%fn (web-package-functions *web-package*))
 	   ,%fn)))))
        ;; unfinished implementation
@@ -468,7 +467,7 @@ or a keyword symbol.
 		  (format nil "~A ~A"
 			  fn-name-string
 			  (web-package-functions web-package)))))))))
-	      
+
 (defmethod web-package-handle-request ((web-package web-package) request)
   (let ((fn (web-package-handler-for-request web-package request)))
     (if fn
@@ -520,6 +519,8 @@ NIL unconditionally."
     (string param-string)
     (character (and (= (length param-string) 1)
                     (char param-string 0)))
+    (number (ignore-errors (parse-number:parse-number param-string)))
+    (real (ignore-errors (parse-number:parse-real-number param-string)))
     (integer (ignore-errors (parse-integer param-string :junk-allowed t)))
     (keyword (make-keyword param-string))
     (boolean t)
@@ -610,6 +611,10 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
           (t (error "Don't know what to do with parameter type ~S." parameter-type)))))
 
 
+;(defun make-function-var-instance-from-var-definition-list (list)
+;  (if (atom list)
+;      (make-instance 'web-function-var :name list
+
 (defun href (fn-designator &optional (package *web-package*))
   (web-function-href fn-designator package))
 
@@ -619,17 +624,16 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
 	    (string-downcase (web-package-name package))
 	    (string-downcase (web-function-name fn)))))
 
-
 ;(defun make-function-var-instance-from-var-definition-list (list)
 ;  (if (atom list)
 ;      (make-instance 'web-function-var :name list
- 
 
 (defun enough-url (url url-prefix)
   "Returns the relative portion of URL relative to URL-PREFIX, similar
 to what ENOUGH-NAMESTRING does for pathnames."
   (subseq url (or (mismatch url url-prefix) (length url-prefix))))
 
+#+nil
 (defun serve-static-file (given-path base-path &optional content-type)
   (declare (optimize debug))
   (let* ((given-path (subseq given-path 1))
@@ -643,6 +647,6 @@ to what ENOUGH-NAMESTRING does for pathnames."
                                     always (stringp component))))
       (setf (hunchentoot:return-code) hunchentoot:+http-forbidden+)
       (error "problem with ~S ~S" given-path script-path-directory)
-      (throw 'handler-done nil))
+      (throw 'hunchentoot::handler-done nil))
       
     (hunchentoot:handle-static-file (merge-pathnames script-path base-path) content-type)))

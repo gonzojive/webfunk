@@ -11,10 +11,10 @@
 (defparameter *template-env* nil)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (cl-emb:register-emb "main-template" (slurp-file-3000 "templates/main.template"))
-  (cl-emb:register-emb "package-template" (slurp-file-3000 "templates/package.template"))
-  (cl-emb:register-emb "asd-template" (slurp-file-3000 "templates/webfunk-asd.template"))
-  (cl-emb:register-emb "paren-site-template" (slurp-file-3000 "/home/red/projects/webfunk/script/templates/site.paren.template")))
+  (cl-emb:register-emb "main-template" (slurp-file-3000 "script/templates/main.template"))
+  (cl-emb:register-emb "package-template" (slurp-file-3000 "script/templates/package.template"))
+  (cl-emb:register-emb "asd-template" (slurp-file-3000 "script/templates/webfunk-asd.template"))
+  (cl-emb:register-emb "paren-site-template" (slurp-file-3000 "script/templates/site.paren.template")))
 
 (defun output-file-from-template (out-pathname template-name)
   (with-open-file (stream out-pathname :direction :output)
