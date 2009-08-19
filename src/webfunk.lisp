@@ -633,7 +633,7 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
 to what ENOUGH-NAMESTRING does for pathnames."
   (subseq url (or (mismatch url url-prefix) (length url-prefix))))
 
-#+nil
+
 (defun serve-static-file (given-path base-path &optional content-type)
   (declare (optimize debug))
   (let* ((given-path (subseq given-path 1))
