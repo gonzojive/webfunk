@@ -356,6 +356,7 @@ or a keyword symbol.
 				   (declare (ignore initform parameter-name))
 				   `(make-instance 'web-function-parameter
 						   :name ',name
+						   :initform-function #'(lambda () ,initform)
 						   :parameter-type ,parameter-type)))
 			     web-lambda-list)))
 
@@ -436,9 +437,13 @@ or a keyword symbol.
        postfix)
     ,@(mapcan #'(lambda (fn-param)
 		  (list (intern (symbol-name (parameter-name fn-param)) :keyword)
-			(compute-parameter (parameter-uri-name fn-param)
-					   (or (parameter-type fn-param) 'string)
-					   :both)))
+			(cond
+			  ((hunchentoot:parameter (parameter-uri-name fn-param))
+			   (compute-parameter (parameter-uri-name fn-param)
+					      (or (parameter-type fn-param) 'string)
+					      :both))
+			  ((parameter-init-form-function fn-param)
+			   (funcall (parameter-init-form-function fn-param))))))
 	      (web-function-parameters fn))))
     
 
