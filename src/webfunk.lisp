@@ -379,7 +379,7 @@ or a keyword symbol.
 	     ,@(when content-type
 		 (list `(when (boundp 'hunchentoot:*reply*)
 			  (setf (hunchentoot:content-type*) ,content-type))))
-	     ,@body)
+	     (funcall (lambda () ,@body)))
 	   (pushnew ,%fn (web-package-functions *web-package*))
 	   ,%fn)))))
        ;; unfinished implementation
@@ -633,7 +633,7 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
 to what ENOUGH-NAMESTRING does for pathnames."
   (subseq url (or (mismatch url url-prefix) (length url-prefix))))
 
-#+nil
+
 (defun serve-static-file (given-path base-path &optional content-type)
   (declare (optimize debug))
   (let* ((given-path (subseq given-path 1))
