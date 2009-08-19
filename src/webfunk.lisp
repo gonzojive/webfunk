@@ -380,6 +380,7 @@ or a keyword symbol.
 	     ,@(when content-type
 		 (list `(when (boundp 'hunchentoot:*reply*)
 			  (setf (hunchentoot:content-type*) ,content-type))))
+	     ;; putting this funcall lambda form in allows declarations in BODY
 	     (funcall (lambda () ,@body)))
 	   (pushnew ,%fn (web-package-functions *web-package*))
 	   ,%fn)))))
