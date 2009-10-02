@@ -12,6 +12,8 @@
    #:in-web-package
    #:web-package-name
    #:web-package-functions
+   #:web-package-uri
+   #:web-package-uri-aliases
    ;; web functions
    #:web-function
 
@@ -360,8 +362,8 @@ or a keyword symbol.
 						   :parameter-type ,parameter-type)))
 			     web-lambda-list)))
 
-	   (generic-lambda-list (append (list '&key) parameter-names (list '&allow-other-keys)))
-	   (method-lambda-list (append (list '&key) parameter-names (list '&allow-other-keys)))
+	   (generic-lambda-list (append (list '&key) parameter-names (list 'called-from-web?) (list '&allow-other-keys)))
+	   (method-lambda-list (append (list '&key) parameter-names (list 'called-from-web?) (list '&allow-other-keys)))
 
 	   (%fn (gensym "function"))
 	   (%parameters (gensym "parameters"))
@@ -378,7 +380,7 @@ or a keyword symbol.
 
 	   (defmethod ,fn-name ,method-lambda-list
 	     ,@(when content-type
-		 (list `(when (boundp 'hunchentoot:*reply*)
+		 (list `(when (and called-from-web? (boundp 'hunchentoot:*reply*))
 			  (setf (hunchentoot:content-type*) ,content-type))))
 	     ;; putting this funcall lambda form in allows declarations in BODY
 	     (funcall (lambda () ,@body)))
@@ -431,7 +433,9 @@ or a keyword symbol.
 (defparameter *wiretap* *standard-output*)
 
 (defmethod web-function-transform-request-into-arguments ((fn web-function) request)
-  `(:postfix
+  `(:called-from-web?
+    t
+    :postfix
     ,(multiple-value-bind (prefix fn-name-string postfix) 
 	 (web-package-prefix-matches-uri? (web-package fn) (hunchentoot:request-uri request))
        (declare (ignore prefix fn-name-string))
