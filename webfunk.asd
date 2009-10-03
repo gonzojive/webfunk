@@ -16,11 +16,11 @@
 ;			 (:file "heap" :depends-on ("log"))
 			 ;;(:file "sails" :depends-on ("package"))
 	       )))
-  :depends-on ("hunchentoot" "cl-ppcre" "closer-mop" "parse-number"))
+  :depends-on ("hunchentoot" "cl-ppcre" "closer-mop" "parse-number" "anaphora"))
 
-;(defsystem persistent-heap-tests
-;  :components ((:module "test"
-;                        :components ((:file "test-package")
-;				     (:file "log-tests" :depends-on ("test-package"))
-;				     )))
-;  :depends-on ("persistent-heap" "stefil"))
+(defsystem webfunk-tests
+  :components ((:module "test"
+                        :components ((:file "test-package")
+				     (:file "tests" :depends-on ("test-package"))
+				     )))
+  :depends-on ("webfunk" "stefil"))

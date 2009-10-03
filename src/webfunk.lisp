@@ -1,5 +1,6 @@
 (defpackage :webfunk
-  (:use :common-lisp)
+    (:nicknames :wf)
+  (:use :common-lisp :anaphora)
   (:export 
    ;; macros
    #:web-defun
@@ -7,6 +8,7 @@
    #:web-defpackage #:webpackage
    #:*web-packages*
    #:*web-package*
+   #:*root-web-package*
    #:web-package
    #:find-web-package
    #:in-web-package
@@ -37,6 +39,9 @@
 (defvar *web-package* nil
   "Active web package.  Set by IN-WEB-PACKAGE.")
 
+(defvar *root-web-package* nil
+  "The web package that responds to requests on the root of the server.")
+
 (defvar *lisp-package-web-package-alist* nil
   "AList to map lisp packages to web packages (many to one).")
 
@@ -53,7 +58,7 @@ for the web package."))
 
 (defgeneric web-package-handles-request? (web-package request)
   (:documentation "Returns T if the given web package definitely handles the request.
-Otherwise returns NIL"))
+Otherwise returns NIL."))
 
 (defgeneric web-package-handle-request (web-package request)
   (:documentation "Returns a string as the result of the given HTTP request."))
@@ -82,6 +87,12 @@ Otherwise returns NIL"))
     :initarg :root-function :initarg :root-function-name
     :accessor web-package-root-function-name
     :documentation "When the user navigates to the root a directory, this is the function name to call.")
+   (default-function-name
+    :type (or null symbol)
+    :initform nil
+    :initarg :default-function :initarg :default-function-name
+    :accessor web-package-default-function-name
+    :documentation "When the user navigates to the root a directory, this is the function name to call.")
    (functions
     :initform nil
     :initarg :functions
@@ -92,10 +103,19 @@ Otherwise returns NIL"))
   (print-unreadable-object (object stream :type t)
     (format stream "~A" (web-package-name object))))
 
+(defmethod web-package-uri ((package web-package))
+  (or (slot-value package 'uri)
+      (string-downcase (symbol-name (web-package-name package)))))
+
 (defun find-web-package (name)
   "Finds the WEB-PACKAGE of the given name."
   (when (not (stringp name)) (setf name (string name)))
   (find name *web-packages* :key #'web-package-name :test #'string-equal))
+
+(defun delete-web-packgage (name)
+  "Deletes the WEB-PACKAGE of the given NAME."
+  (when (not (stringp name)) (setf name (string name)))
+  (setf *web-packages* (remove  name *web-packages* :key #'web-package-name :test #'string-equal)))
 
 (defun find-web-function (web-package fn-name)
   "Returns the web function with the given symbol as its name in the given web package"
@@ -117,6 +137,9 @@ Otherwise returns NIL"))
   (:method ((web-function web-function) name)
     (setf (closer-mop:generic-function-name web-function) name)))
 
+;(defclass web-platform ()
+;  ((
+;  (:documentation "An abstraction of a web server."))
 ;(defclass web-generic-function-class (standard-generic-function)
 ;  ()
 ;  (:documentation "web-generic-function-"))
@@ -166,7 +189,7 @@ Otherwise returns NIL"))
 (defmethod shared-initialize ((package web-package) slot-names &rest rest &key name (uri nil uri-key-p) lisp-packages &allow-other-keys)
   "Initializer for web package.  If URI is not set, sets it to downcased NAME + '/'"
   (declare (ignore uri))
-  (Format t "Lisp packages: ~S~%Rest: ~S~%" lisp-packages rest)
+;  (Format t "Lisp packages: ~S~%Rest: ~S~%" lisp-packages rest)
   (if uri-key-p
       (call-next-method)
       (apply #'call-next-method package slot-names
@@ -189,7 +212,7 @@ should be handed to (make-instance WEB-PACKAGE-CLASS) as a single value,
 rather than a list.")
   (:method ((web-package-class (eql (find-class 'web-package))) initarg)
     (case initarg
-      ((or :uri :listed :root-function-name :root-function) t)
+      ((or :uri :listed :root-function-name :root-function :default-function :default-function-name) t)
       (t nil))))
 
 (defgeneric web-package-class-initarg-evaluated-p (web-package-class initarg)
@@ -197,7 +220,7 @@ rather than a list.")
 should be handed to (make-instance WEB-PACKAGE-CLASS) evaluated or not evaluated.")
   (:method ((web-package-class (eql (find-class 'web-package))) initarg)
     (case initarg
-      ((or :uri :listed :root-function-name :root-function) nil)
+      ((or :uri :listed :root-function-name :root-function :default-function :default-function-name) nil)
       (t nil))))
 
 (defun maphash-ret (fn hash-table)
@@ -236,7 +259,9 @@ OPTION ::= (:uri STRING) | (:uri-aliases STRING*) | (:package-class package-clas
 :package-class designates the class this macro will instantiate, default is WEB-PACKAGE."
   (let ((web-package-class
 	 (find-class (or (second (find :package-class options :key #'car))
-			 'web-package))))
+			 'web-package)))
+	(rootp
+	 (second (find :rootp options :key #'car))))
     (flet ((options-to-make-instance-keys (options)
 	     ;; We have to be careful so that things evaluate in the right order.
 	     ;; basically option arguments should be evaluated in the order
@@ -249,10 +274,6 @@ OPTION ::= (:uri STRING) | (:uri-aliases STRING*) | (:package-class package-clas
 				   (if evaluated (second option) `',(second option))
 				   (if evaluated `(list ,@(rest option)) `'(,@(rest option)))))))
 				       
-					    
-
-				      
-			       
 ;			       `',(funcall (if (web-package-class-initarg-singular-p
 ;						web-package-class (car option))
 ;					       #'second
@@ -267,6 +288,8 @@ OPTION ::= (:uri STRING) | (:uri-aliases STRING*) | (:package-class package-clas
 	   (let ((,%package (make-web-package ,web-package-class
 					      :name ,package-name
 					      ,@(options-to-make-instance-keys options))))
+	     ,@(when rootp
+		 (list `(setf *root-web-package* ,%package)))
 	     ,%package))))))
 
 (defmacro webpackage (defined-package-name &body options)
@@ -280,7 +303,7 @@ WEB-PACKAGE class by calling REINITIALIZE-WEB-PACKAGE with
 all the arguments passed to this function."
 ;  (format t "WEB-PACKAGE-PARAMS: ~S~%" rest)
   (declare (optimize debug))
-  (format t "Args to make-web-package: ~S~%" rest)
+;  (format t "Args to make-web-package: ~S~%" rest)
   (let ((web-package-maybe (find-web-package name)))
     (let ((web-package (if (null web-package-maybe)
 			   (apply #'make-instance web-package-class rest)
@@ -393,22 +416,41 @@ or a keyword symbol.
   (and (>= (length string) (length prefix))
        (string= string prefix :end1 (length prefix))))
 
+(defun uri-levels (uri)
+  "Given a uri like /stuff/dogs/asdf/asdf returns a these values:
+1.  firstlevel (e.g. stuff)
+2.  whether there is a slash after firstlevel (here T)
+3.  secondlevel, NIL if there is no slash or it is the empty string (e.g. dogs)
+4.  everything after the end of dogs, include the slish.  NIL if nothing follows."
+  (cl-ppcre:register-groups-bind (firstlevel slash secondlevel postfix)
+      ("\\/([^\\/]*)(\\/)?([^\\#\\?\\/]*)?(/[^\\#\\?]*)?" uri)
+    (values (when (> (length firstlevel) 0)
+	      firstlevel)
+	    (if slash t nil)
+	    (when (and slash (> (length secondlevel) 0))
+	      secondlevel)
+	    (when (> (length postfix) 0)
+	      postfix))))
+
+(defgeneric web-package-prefix-matches-uri? (web-package uri))
+  
 (defmethod web-package-prefix-matches-uri? ((web-package web-package) uri)
   "Returns 2 values.  1. nil if does not match, the matched prefix if it does match.
 2.  if it does match, the rest of the uri string."
-  (cl-ppcre:register-groups-bind (firstlevel slash secondlevel postfix)
-				 ("/([^\\/]*)(\\/)?([^\\#\\?\\/]*)?(/[^\\#\\?]*)?" uri)
+  (multiple-value-bind (firstlevel slash secondlevel postfix)
+      (uri-levels uri)
     (declare (ignore slash))
-    (let* ((uri-package-name (string-upcase (hunchentoot:url-decode firstlevel)))
-	   (matching-prefix (find-if #'(lambda (package-uri)
-					 (string-prefixp uri package-uri))
-				     (cons (web-package-uri web-package)
-					   (web-package-uri-aliases web-package)))))
+    (let* ((uri-package-name (if firstlevel
+				 (string-upcase (hunchentoot:url-decode firstlevel))
+				 nil))
+	   (matching-prefix (or (find-if #'(lambda (package-uri)
+					     (string-prefixp uri package-uri))
+					 (cons (web-package-uri web-package)
+					       (web-package-uri-aliases web-package))))))
     (cond 
       (matching-prefix
        (values matching-prefix secondlevel postfix))
-      ((equal uri-package-name (symbol-name (web-package-name web-package)))
-       (values (string-downcase uri-package-name) secondlevel postfix))
+      
       (t (values nil))))))
     
 
@@ -432,14 +474,16 @@ or a keyword symbol.
 
 (defparameter *wiretap* *standard-output*)
 
-(defmethod web-function-transform-request-into-arguments ((fn web-function) request)
+(defgeneric  web-function-transform-request-into-arguments (fn request  &key postfix &allow-other-keys))
+(defmethod web-function-transform-request-into-arguments ((fn web-function) request &key postfix &allow-other-keys)
   `(:called-from-web?
     t
     :postfix
-    ,(multiple-value-bind (prefix fn-name-string postfix) 
-	 (web-package-prefix-matches-uri? (web-package fn) (hunchentoot:request-uri request))
-       (declare (ignore prefix fn-name-string))
-       postfix)
+    ,(or postfix
+	 (multiple-value-bind (prefix fn-name-string postfix) 
+	     (web-package-prefix-matches-uri? (web-package fn) (hunchentoot:request-uri request))
+	   (declare (ignore prefix fn-name-string))
+	   postfix))
     ,@(mapcan #'(lambda (fn-param)
 		  (list (intern (symbol-name (parameter-name fn-param)) :keyword)
 			(cond
@@ -452,31 +496,57 @@ or a keyword symbol.
 	      (web-function-parameters fn))))
     
 
+(defgeneric web-function-call-with-request (web-function request &key postfix &allow-other-keys))
 
-(defmethod web-function-call-with-request ((fn web-function) request)
-  (apply fn (web-function-transform-request-into-arguments fn request)))
+(defmethod web-function-call-with-request ((fn web-function) request &key postfix)
+  (apply fn (web-function-transform-request-into-arguments fn request :postfix postfix)))
 
 (defmethod web-package-handler-for-request ((web-package web-package) request)
   (let ((uri (hunchentoot:request-uri request)))
     (multiple-value-bind (prefix fn-name-string postfix) 
 	(web-package-prefix-matches-uri? web-package uri)
-      (declare (ignore postfix))
-      (when prefix
-	(let* ((fn-name-string (and fn-name-string (string-upcase fn-name-string)))
-	       (fn (if (and fn-name-string (< 0 (length fn-name-string)))
-		       (find fn-name-string
-			     (web-package-functions web-package)
-			     :key #'(lambda (x) (symbol-name (web-function-name x)))
-			     :test #'equal)
-		       (find-web-function web-package (web-package-root-function-name web-package)))))
-	  (if fn
-	      #'(lambda ()
-		  (let ((*web-package* web-package))
-		    (web-function-call-with-request fn request)))
-	      #'(lambda ()
-		  (format nil "~A ~A"
-			  fn-name-string
-			  (web-package-functions web-package)))))))))
+      (when (or prefix (eql *root-web-package* web-package))
+	(when (not prefix) ;; not found explicitly
+	  (multiple-value-bind (firstlevel slash secondlevel postfix)
+	      (uri-levels uri)
+	    (declare (ignore slash))
+	    (setf fn-name-string firstlevel)
+	    (setf postfix (concatenate 'string
+				       (when secondlevel secondlevel)
+				       (when postfix "/")
+				       (when postfix postfix)))))
+	  
+	(let* ((fn-name-string (and fn-name-string (string-upcase fn-name-string))))
+	  (multiple-value-bind (fn corrected-postfix)
+	      (let ((explicit-fn
+		     (if (and fn-name-string (< 0 (length fn-name-string)))
+			 (find fn-name-string
+			       (web-package-functions web-package)
+			       :key #'(lambda (x) (symbol-name (web-function-name x)))
+			       :test #'equal)
+			 (awhen (web-package-root-function-name web-package)
+			   (find-web-function web-package it)))))
+		(if explicit-fn
+		    (values explicit-fn postfix)
+		    (awhen (web-package-default-function-name web-package)
+		      (values (find-web-function web-package it)
+			      (if prefix
+				  (with-output-to-string (stream)
+				    ;;(when slash (write-string "/" stream)) 
+				    (when fn-name-string (write-string fn-name-string stream))
+				    (when postfix (write-string postfix stream)))
+				  (subseq uri 1))))))
+;	    (format *wiretap* "Corrected postfix: ~A // ~A ~A~%" corrected-postfix fn-name-string postfix)
+	    (if fn
+		#'(lambda ()
+		    (let ((*web-package* web-package))
+		      (web-function-call-with-request fn request :postfix corrected-postfix)))
+		#'(lambda ()
+		    (when (boundp 'hunchentoot:*reply*)
+		      (setf (hunchentoot:content-type*) "text/plain"))
+		    (format nil "~A ~A"
+			    fn-name-string
+			    (web-package-functions web-package))))))))))
 
 (defmethod web-package-handle-request ((web-package web-package) request)
   (let ((fn (web-package-handler-for-request web-package request)))
@@ -485,14 +555,15 @@ or a keyword symbol.
 	"nobody handled request!")))
 
 (defun webfunk-hunchentoot-dispatcher (request)
-  (or (loop :for web-package :in *web-packages*
-	 :when (web-package-handles-request? web-package request)
-	 :return #'(lambda () (web-package-handle-request web-package request)))
-      #'(lambda () (format nil "Web packages: ~{ ~A ~}"
-			   (mapcar #'(lambda (x)
-				       (cons (web-package-uri x)
-					     (web-package-handles-request? x request)))
-				   *web-packages*)))))
+  (let ((web-package (or (find-if #'(lambda (wp) (web-package-handles-request? wp request)) *web-packages*)
+			 *root-web-package*)))
+    (if web-package
+	#'(lambda () (web-package-handle-request web-package request))
+	#'(lambda () (format nil "Web packages: ~{ ~A ~}"
+			     (mapcar #'(lambda (x)
+					 (cons (web-package-uri x)
+					       (web-package-handles-request? x request)))
+				     *web-packages*))))))
 
 (defun dispatch-web-functions (request)
   "This is a dispatcher which returns the appropriate handler defined with
