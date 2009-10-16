@@ -1,0 +1,22 @@
+(cl:in-package :cl-user)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (load "/apps/ports.lisp"))
+
+(defparameter *swank-port* (config.ports:read-port :<% @var package-name %> :swank))
+(defparameter *http-port* (config.ports:read-port :<% @var package-name %> :http))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (load "/home/red/.emacs.d/slime/swank.asd"))
+
+(asdf:operate 'asdf:load-op :swank)
+
+(swank:create-server :port *swank-port* :dont-close t :coding-system "utf-8-unix")
+(format t "Started <% @var package-name %> SWANK Server on port ~A" *swank-port*)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (asdf:operate 'asdf:load-op :<% @var package-name %>))
+
+(<% @var package-name %>:start-server :port *http-port*)
+(format t "Started <% @var package-name %> Server on port ~A" *http-port*)
+

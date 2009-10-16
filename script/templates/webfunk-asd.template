@@ -13,7 +13,8 @@
   :components ((:module "src"
 			:components
 			((:file "package")
-			 (:file "pages" :depends-on ("package"))
+			 (:file "server" :depends-on ("package"))
+			 (:file "pages" :depends-on ("server"))
 			 )))
 
   :depends-on ("cl-ppcre" "cl-who" "webfunk" "css-sexp" "cl-sails" "cl-markdown"))

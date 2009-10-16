@@ -11,7 +11,10 @@
 (defparameter *template-env* nil)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (cl-emb:register-emb "main-template" (slurp-file-3000 "script/templates/main.template"))
+  (cl-emb:register-emb "lisp-daemon-template" (slurp-file-3000 "script/templates/lisp-daemon.template"))
+  (cl-emb:register-emb "start-daemon-template" (slurp-file-3000 "script/templates/start-daemon.template"))
+  (cl-emb:register-emb "pages-template" (slurp-file-3000 "script/templates/pages.template"))
+  (cl-emb:register-emb "server-template" (slurp-file-3000 "script/templates/server.template"))
   (cl-emb:register-emb "package-template" (slurp-file-3000 "script/templates/package.template"))
   (cl-emb:register-emb "asd-template" (slurp-file-3000 "script/templates/webfunk-asd.template"))
   (cl-emb:register-emb "paren-site-template" (slurp-file-3000 "script/templates/site.paren.template")))
@@ -37,7 +40,10 @@
 	   (system-package-name (format nil "~A.script" package-name))
 	   (asd-pathname (merge-pathnames (make-pathname :name package-name :type "asd")
 					  output-directory))
-	   (main-pathname (merge-pathnames (make-pathname :name "pages" :type "lisp") src-dir))
+	   (server-pathname (merge-pathnames (make-pathname :name "server" :type "lisp") src-dir))
+	   (pages-pathname (merge-pathnames (make-pathname :name "pages" :type "lisp") src-dir))
+	   (startd-pathname (merge-pathnames (make-pathname :name "start-daemon" :type "lisp") output-directory))
+	   (lispd-pathname (merge-pathnames (make-pathname :name "lisp-daemon" :type "lisp") output-directory))
 	   (package-pathname (merge-pathnames (make-pathname :name "package" :type "lisp") src-dir))
 	   (paren-site-pathname (merge-pathnames (make-pathname :name "site" :type "paren") paren-dir))
 	   (*template-env* `(:package-name ,package-name
@@ -46,7 +52,10 @@
 					   :package-title ,package-title)))
 
       (output-file-from-template asd-pathname "asd-template")
-      (output-file-from-template main-pathname "main-template")
+      (output-file-from-template server-pathname "server-template")
+      (output-file-from-template pages-pathname "pages-template")
+      (output-file-from-template startd-pathname "start-daemon-template")
+      (output-file-from-template lispd-pathname "lisp-daemon-template")
       (output-file-from-template package-pathname "package-template")
       (output-file-from-template paren-site-pathname "paren-site-template")
       
