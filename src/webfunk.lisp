@@ -1,33 +1,3 @@
-(defpackage :webfunk
-    (:nicknames :wf)
-  (:use :common-lisp :anaphora)
-  (:export 
-   ;; macros
-   #:web-defun
-   ;; web packages
-   #:web-defpackage #:webpackage
-   #:*web-packages*
-   #:*web-package*
-   #:*root-web-package*
-   #:web-package
-   #:find-web-package
-   #:in-web-package
-   #:web-package-name
-   #:web-package-functions
-   #:web-package-uri
-   #:web-package-uri-aliases
-   ;; web functions
-   #:web-function
-
-   #:web-function-href
-   #:href
-
-   ;; serving files
-   #:serve-static-file
-   
-   ;; hunchentoot plug-in
-   #:webfunk-hunchentoot-dispatcher))
-
 (in-package :webfunk)
 
 ;(defvar *web-package-table* (make-hash-table :test #'equal)
@@ -105,7 +75,8 @@ Otherwise returns NIL."))
 
 (defmethod web-package-uri ((package web-package))
   (or (slot-value package 'uri)
-      (string-downcase (symbol-name (web-package-name package)))))
+      (format nil "/~A"
+	      (string-downcase (symbol-name (web-package-name package))))))
 
 (defun find-web-package (name)
   "Finds the WEB-PACKAGE of the given name."
@@ -376,11 +347,12 @@ or a keyword symbol.
     (let* ((parameter-names (mapcar #'first web-lambda-list))
 	   (make-parameters-form
 	    `(list ,@(mapcar #'(lambda (param-form)
-				 (destructuring-bind (name &key initform parameter-name parameter-type)
+				 (destructuring-bind (name &key initform parameter-name uri-name parameter-type)
 				     param-form
 				   (declare (ignore initform parameter-name))
 				   `(make-instance 'web-function-parameter
 						   :name ',name
+						   :uri-name ,uri-name
 						   :initform-function #'(lambda () ,initform)
 						   :parameter-type ,parameter-type)))
 			     web-lambda-list)))
@@ -472,7 +444,7 @@ or a keyword symbol.
 ;	 (when (not ,symbol-existed-p-var)
 ;	   (unintern ,var 
 
-(defparameter *wiretap* *standard-output*)
+;(defparameter *wiretap* *standard-output*)
 
 (defgeneric  web-function-transform-request-into-arguments (fn request  &key postfix &allow-other-keys))
 (defmethod web-function-transform-request-into-arguments ((fn web-function) request &key postfix &allow-other-keys)
@@ -502,11 +474,21 @@ or a keyword symbol.
   (apply fn (web-function-transform-request-into-arguments fn request :postfix postfix)))
 
 (defmethod web-package-handler-for-request ((web-package web-package) request)
-  (let ((uri (hunchentoot:request-uri request)))
-    (multiple-value-bind (prefix fn-name-string postfix) 
-	(web-package-prefix-matches-uri? web-package uri)
+  (let* ((uri (hunchentoot:request-uri request)))
+    (multiple-value-bind (prefix fn-name-string postfix)
+	(multiple-value-bind (pre fname post)
+	    (web-package-prefix-matches-uri? web-package uri)
+	  (cond
+	    (pre (values pre fname post))
+	    ((eql *root-web-package* web-package)
+	     (let ((effective-uri  (format nil "/~A~A" (web-package-uri web-package) (subseq uri 1))))
+;format	       (format *wiretap* "Effective URI: ~A~%" effective-uri) 
+	       (web-package-prefix-matches-uri? web-package effective-uri)))
+	    (t (error "Failed to match URI ~A to package." uri))))
+      
       (when (or prefix (eql *root-web-package* web-package))
 	(when (not prefix) ;; not found explicitly
+;	  (format *wiretap* "Handler: ~A~%   Corrected postfix: ~A~%   fn-name-string:~A~%   postfix: ~A~%" fn corrected-postfix fn-name-string postfix)
 	  (multiple-value-bind (firstlevel slash secondlevel postfix)
 	      (uri-levels uri)
 	    (declare (ignore slash))
@@ -536,7 +518,7 @@ or a keyword symbol.
 				    (when fn-name-string (write-string fn-name-string stream))
 				    (when postfix (write-string postfix stream)))
 				  (subseq uri 1))))))
-;	    (format *wiretap* "Corrected postfix: ~A // ~A ~A~%" corrected-postfix fn-name-string postfix)
+;	    (format *wiretap* "Handler: ~A~%   Corrected postfix: ~A~%   fn-name-string:~A~%   postfix: ~A~%" fn corrected-postfix fn-name-string postfix)
 	    (if fn
 		#'(lambda ()
 		    (let ((*web-package* web-package))

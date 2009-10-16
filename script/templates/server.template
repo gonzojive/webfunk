@@ -1,0 +1,12 @@
+(in-package :<% @var package-name %>)
+
+(defvar *server* nil)
+
+(defun start-server (&key (port 80))
+  (declare (type integer port))
+  (setf *server* (webfunk:start-http-server :port port)))
+
+(defun stop-server ()
+  (when *server*
+    (webfunk:stop-http-server *server*)
+    (setf *server* nil)))

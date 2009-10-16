@@ -10,7 +10,9 @@
   :license "LGPL"
   :components ((:module "src"
 			:components
-			((:file "webfunk")
+			((:file "package")
+			 (:file "webfunk" :depends-on ("package"))
+			 (:file "http" :depends-on ("package" "webfunk"))
 ;			 (:file "files" :depends-on ("package"))
 ;			 (:file "log" :depends-on ("files" "package"))
 ;			 (:file "heap" :depends-on ("log"))
