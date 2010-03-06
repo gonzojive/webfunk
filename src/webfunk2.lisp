@@ -33,7 +33,7 @@ for the web package."))
   (:documentation "Returns T if the given web package definitely handles the request.
 Otherwise returns NIL."))
 
-(defgeneric web-package-handle-request (web-package request &key rest-of-uri &allow-other-keys)
+(defgeneric web-package-handle-request (web-package request)
   (:documentation "Returns a string as the result of the given HTTP request."))
 
 (defclass web-package ()
@@ -190,7 +190,7 @@ rather than a list.")
       (t nil))))
 
 (defgeneric web-package-class-initarg-evaluated-p (web-package-class initarg)
-  (:documentation "Returns T if the keyword option initarg in a defpackage form
+  (:documentation "Returns T if the keyword option INITARG in a defpackage form
 should be handed to (make-instance WEB-PACKAGE-CLASS) evaluated or not evaluated.")
   (:method ((web-package-class (eql (find-class 'web-package))) initarg)
     (case initarg
@@ -222,6 +222,7 @@ merges all the options with the same car together.  So it will return something 
 	      (hash-table hash)
 	      (t nil))
 	    options-in-order)))
+
 
 (defmacro web-defpackage (defined-package-name &body options)
   "Defines a WEB-PACKAGE.  Options is a list of options.  An option takes the form
@@ -376,7 +377,6 @@ or a keyword symbol.
 		 (web-package ,%fn) *web-package*)
 
 	   (defmethod ,fn-name ,method-lambda-list
-	       (declare (ignorable called-from-web?))
 	     ,@(when content-type
 		 (list `(when (and called-from-web? (boundp 'hunchentoot:*reply*))
 			  (setf (hunchentoot:content-type*) ,content-type))))
@@ -386,7 +386,195 @@ or a keyword symbol.
 	   ,%fn)))))
        ;; unfinished implementation
 
-(defun my-make-keyword (string &key (destructivep nil))
+(defun string-prefixp (string prefix)
+  "Returns T if STRING begins with the same characters as are in prefix."
+  (and (>= (length string) (length prefix))
+       (string= string prefix :end1 (length prefix))))
+
+(defun uri-levels (uri)
+  "Given a uri like /stuff/dogs/asdf/asdf returns a these values:
+1.  firstlevel (e.g. stuff)
+2.  whether there is a slash after firstlevel (here T)
+3.  secondlevel, NIL if there is no slash or it is the empty string (e.g. dogs)
+4.  everything after the end of dogs, include the slish.  NIL if nothing follows."
+  (cl-ppcre:register-groups-bind (firstlevel slash secondlevel postfix)
+      ("\\/([^\\/]*)(\\/)?([^\\#\\?\\/]*)?(/[^\\#\\?]*)?" uri)
+    (values (when (> (length firstlevel) 0)
+	      firstlevel)
+	    (if slash t nil)
+	    (when (and slash (> (length secondlevel) 0))
+	      secondlevel)
+	    (when (> (length postfix) 0)
+	      postfix))))
+
+(defgeneric web-package-prefix-matches-uri? (web-package uri))
+
+(defmethod web-package-prefix-matches-uri? ((web-package web-package) uri)
+  "Returns 2 values.  1. nil if does not match, the matched prefix if it does match.
+2.  if it does match, the rest of the uri string."
+  (multiple-value-bind (firstlevel slash secondlevel postfix)
+      (uri-levels uri)
+    (declare (ignore slash))
+    (format *wiretap* "URI matches prefix?  <~A>~%" uri)
+    (format *wiretap* "Levels: ~A ~A ~A~%" firstlevel secondlevel postfix)
+    (let* ((uri-package-name (if firstlevel
+				 (string-upcase (hunchentoot:url-decode firstlevel))
+				 nil))
+	   (matching-prefix (or (find-if #'(lambda (package-uri)
+					     (string-prefixp uri package-uri))
+					 (cons (web-package-uri web-package)
+					       (web-package-uri-aliases web-package))))))
+    (cond 
+      (matching-prefix
+       (values matching-prefix secondlevel postfix))
+      
+      (t (values nil))))))
+    
+
+(defmethod web-package-handles-request? ((web-package web-package) request)
+  (let ((uri (hunchentoot:request-uri request)))
+    (and (web-package-prefix-matches-uri? web-package uri) 
+	 t)))
+
+;(defmacro with-temporarily-interned-symbol ((var string &optional (package nil package-p)) &body body)
+;  (let ((symbol-existed-p-var (gensym "symbol-existedp"))
+;	(string-var (gensym "string"))
+;	(package-var (gensym "package")))
+;    `(let ((,string-var ,string)
+;	   (,package-var ,package))
+;       (multiple-value-bind (,var ,symbol-existed-p-var)
+;	 ,(if package `(intern string package) `(intern string))
+;       (multiple-value-prog1
+;	   (progn ,@body)
+;	 (when (not ,symbol-existed-p-var)
+;	   (unintern ,var 
+
+;(defparameter *wiretap* *standard-output*)
+
+(defgeneric  web-function-transform-request-into-arguments (fn request  &key postfix &allow-other-keys))
+(defmethod web-function-transform-request-into-arguments ((fn web-function) request &key postfix &allow-other-keys)
+  `(:called-from-web?
+    t
+    :postfix
+    ,(or postfix
+	 (multiple-value-bind (prefix fn-name-string postfix) 
+	     (web-package-prefix-matches-uri? (web-package fn) (hunchentoot:request-uri request))
+	   (declare (ignore prefix fn-name-string))
+	   postfix))
+    ,@(mapcan #'(lambda (fn-param)
+		  (list (intern (symbol-name (parameter-name fn-param)) :keyword)
+			(cond
+			  ((hunchentoot:parameter (parameter-uri-name fn-param))
+			   (compute-parameter (parameter-uri-name fn-param)
+					      (or (parameter-type fn-param) 'string)
+					      :both))
+			  ((parameter-init-form-function fn-param)
+			   (funcall (parameter-init-form-function fn-param))))))
+	      (web-function-parameters fn))))
+    
+
+(defgeneric web-function-call-with-request (web-function request &key postfix &allow-other-keys)
+  (:documentation "Kind of like funcall but for a web-defun.  This
+will usually parse the arguments embedded in request (get/post
+parameters, headers, path) or wrap the function call in some sort of
+context."))
+
+(defmethod web-function-call-with-request ((fn web-function) request &key postfix)
+  (apply fn (web-function-transform-request-into-arguments fn request :postfix postfix)))
+
+(defmethod web-package-handler-for-request ((web-package web-package) request)
+  (let* ((uri (hunchentoot:request-uri request)))
+    (multiple-value-bind (prefix fn-name-string postfix)
+	(multiple-value-bind (pre fname post)
+	    (web-package-prefix-matches-uri? web-package uri)
+	  (cond
+	    (pre (values pre fname post))
+	    ((eql *root-web-package* web-package)
+	     (let ((effective-uri  (format nil "/~A~A" (web-package-uri web-package) (subseq uri 1))))
+;format	       (format *wiretap* "Effective URI: ~A~%" effective-uri) 
+	       (web-package-prefix-matches-uri? web-package effective-uri)))
+	    (t (error "Failed to match URI ~A to package." uri))))
+      
+      (when (or prefix (eql *root-web-package* web-package))
+	(when (not prefix) ;; not found explicitly
+;	  (format *wiretap* "Handler: ~A~%   Corrected postfix: ~A~%   fn-name-string:~A~%   postfix: ~A~%" fn corrected-postfix fn-name-string postfix)
+	  (multiple-value-bind (firstlevel slash secondlevel postfix)
+	      (uri-levels uri)
+	    (declare (ignore slash))
+	    (setf fn-name-string firstlevel)
+	    (setf postfix (concatenate 'string
+				       (when secondlevel secondlevel)
+				       (when postfix "/")
+				       (when postfix postfix)))))
+	  
+	(let* ((fn-name-string (and fn-name-string (string-upcase fn-name-string))))
+	  (multiple-value-bind (fn corrected-postfix)
+	      (let ((explicit-fn
+		     (if (and fn-name-string (< 0 (length fn-name-string)))
+			 (find fn-name-string
+			       (web-package-functions web-package)
+			       :key #'(lambda (x) (symbol-name (web-function-name x)))
+			       :test #'equal)
+			 (awhen (web-package-root-function-name web-package)
+			   (find-web-function web-package it)))))
+		(if explicit-fn
+		    (values explicit-fn postfix)
+		    (awhen (web-package-default-function-name web-package)
+		      (values (find-web-function web-package it)
+			      (if prefix
+				  (with-output-to-string (stream)
+				    ;;(when slash (write-string "/" stream)) 
+				    (when fn-name-string (write-string fn-name-string stream))
+				    (when postfix (write-string postfix stream)))
+				  (subseq uri 1))))))
+;	    (format *wiretap* "Handler: ~A~%   Corrected postfix: ~A~%   fn-name-string:~A~%   postfix: ~A~%" fn corrected-postfix fn-name-string postfix)
+	    (if fn
+		#'(lambda ()
+		    (let ((*web-package* web-package))
+		      (web-function-call-with-request fn request :postfix corrected-postfix)))
+		#'(lambda ()
+		    (when (boundp 'hunchentoot:*reply*)
+		      (setf (hunchentoot:content-type*) "text/plain"))
+		    (format nil "~A ~A"
+			    fn-name-string
+			    (web-package-functions web-package))))))))))
+
+(defmethod web-package-handle-request ((web-package web-package) request)
+  (let ((fn (web-package-handler-for-request web-package request)))
+    (if fn
+	(funcall fn)
+	"nobody handled request!")))
+
+(defun webfunk-hunchentoot-dispatcher (request)
+  (let ((web-package (or (find-if #'(lambda (wp) (web-package-handles-request? wp request))
+				  *web-packages*)
+			 *root-web-package*)))
+    (if web-package
+	#'(lambda () (web-package-handle-request web-package request))
+	#'(lambda () (format nil "<html><head><title>WebFunk web site</title></head>
+<body>
+Web packages: ~{ ~A ~}
+</body></html>"
+			     (mapcar #'(lambda (x)
+					 (format nil "<a href='/~A'>~A</a>" (web-package-uri x)
+						 (string-downcase (string (web-package-name x)))))
+				     #+nil(cons (web-package-uri x)
+					       (web-package-handles-request? x request))
+				     *web-packages*))))))
+
+(defun dispatch-web-functions (request)
+  "This is a dispatcher which returns the appropriate handler defined with
+WEB-DEFUN, if there is one."
+  (webfunk-hunchentoot-dispatcher request))
+;  (loop :for (uri server-names easy-handler) :in *easy-handler-alist*
+;     :when (and (or (eq server-names t)
+;		   (find (server-name *server*) server-names :test #'eq))
+;	       (cond ((stringp uri)
+;		      (string= (script-name request) uri))
+;		     (t (funcall uri request))))
+;     :do (return easy-handler)))
+
+(defun make-keyword (string &key (destructivep nil))
   "Interns the upcased version of STRING into the KEYWORD package.
 Uses NSTRING-UPCASE if DESTRUCTIVEP is true.  Returns NIL if STRING is
 not a string."
@@ -412,7 +600,7 @@ NIL unconditionally."
     (number (ignore-errors (parse-number:parse-number param-string)))
     (real (ignore-errors (parse-number:parse-real-number param-string)))
     (integer (ignore-errors (parse-integer param-string :junk-allowed t)))
-    (keyword (my-make-keyword param-string))
+    (keyword (make-keyword param-string))
     (boolean t)
     (otherwise (error "Unsupported parameter conversion type: ~A" param-type))))
 
@@ -524,7 +712,7 @@ to what ENOUGH-NAMESTRING does for pathnames."
   (subseq url (or (mismatch url url-prefix) (length url-prefix))))
 
 
-(defun serve-static-file ( given-path base-path &optional content-type)
+(defun serve-static-file (given-path base-path &optional content-type)
   (declare (optimize debug))
   (let* ((given-path (subseq given-path 1))
 	 (script-path (ppcre:regex-replace-all "\\\\" given-path "/"))
@@ -533,11 +721,10 @@ to what ENOUGH-NAMESTRING does for pathnames."
 		(null script-path-directory)
 		(and (listp script-path-directory)
 		     (eq (first script-path-directory) :relative)
-		     (loop :for component :in (rest script-path-directory)
-			   :always (stringp component))))
-      (setf (hunchentoot:return-code hunchentoot:*request*) hunchentoot:+http-forbidden+)
+		     (loop for component in (rest script-path-directory)
+                                    always (stringp component))))
+      (setf (hunchentoot:return-code) hunchentoot:+http-forbidden+)
       (error "problem with ~S ~S" given-path script-path-directory)
-      #+nil
       (throw 'hunchentoot::handler-done nil))
       
     (hunchentoot:handle-static-file (merge-pathnames script-path base-path) content-type)))

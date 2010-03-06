@@ -1,6 +1,6 @@
 (defpackage :webfunk
     (:nicknames :wf)
-  (:use :common-lisp :anaphora)
+  (:use :common-lisp :anaphora :alexandria)
   (:export 
    ;; macros
    #:web-defun
