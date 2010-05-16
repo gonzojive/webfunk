@@ -1,8 +1,5 @@
 (cl:in-package :cl-user)
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (load "/apps/ports.lisp"))
-
 (defparameter *swank-port* (config.ports:read-port :<% @var package-name %> :swank))
 (defparameter *http-port* (config.ports:read-port :<% @var package-name %> :http))
 

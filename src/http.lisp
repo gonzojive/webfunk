@@ -6,8 +6,9 @@
 lisp, but this variable will only be bound to one of them.")
 
 
-(defparameter *catch-errors-p* nil
-  "True if WebFunk should catch errors.  False if webfunk should let them rise up.")
+(eval-when (:compile-toplevel :execute :load-toplevel)
+  (defparameter *catch-errors-p* t
+    "True if WebFunk should catch errors.  False if webfunk should let them rise up."))
 
 ;;; An acceptor that invokes the debugger on errors:                                                                                                                                                           
 (defclass webfunk-acceptor (hunchentoot:acceptor)

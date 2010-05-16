@@ -31,6 +31,7 @@
    #:webfunk-hunchentoot-dispatcher
    #:*catch-errors-p*
    #:start-http-server
-   #:stop-http-server))
+   #:stop-http-server
+   #:webfunk-acceptor))
 
 (in-package :webfunk)
