@@ -339,6 +339,8 @@ or a keyword symbol.
 ;; (var &key init-form parameter-name parameter-type)
 ;; 
 ;; description := name | name-lambda-list."
+;;
+;; parameter-type is one of 
   
   ;; Standardize the description argument into the list form
   (when (atom description) (setf description (list description)))
@@ -474,6 +476,7 @@ KEY-TYPE)."
   "Computes and returns the parameter\(s) called PARAMETER-NAME
 and converts it/them according to the value of PARAMETER-TYPE.
 REQUEST-TYPE is one of :GET, :POST, or :BOTH."
+  (declare (optimize (debug 3)))
   (when (member parameter-type '(list array hash-table))
     (setq parameter-type (list parameter-type 'string)))
   (let ((parameter-reader (ecase request-type
@@ -482,9 +485,10 @@ REQUEST-TYPE is one of :GET, :POST, or :BOTH."
                               (:both #'hunchentoot:parameter)))
         (parameters (and (listp parameter-type)
                          (case request-type
-                           (:get (hunchentoot:get-parameters))
-                           (:post (hunchentoot:post-parameters))
-                           (:both (append (hunchentoot:get-parameters) (hunchentoot:post-parameters)))))))
+                           (:get (hunchentoot:get-parameters hunchentoot:*request*))
+                           (:post (hunchentoot:post-parameters hunchentoot:*request*))
+                           (:both (append (hunchentoot:get-parameters hunchentoot:*request*)
+                                          (hunchentoot:post-parameters hunchentoot:*request*)))))))
     (cond ((atom parameter-type)
            (compute-simple-parameter parameter-name parameter-type parameter-reader))
           ((and (null (cddr parameter-type))

@@ -21,10 +21,15 @@ lisp, but this variable will only be bound to one of them.")
 	   ;; ignore connection errors
 	   (#+sbcl 
 	    (sb-sys:io-timeout #'(lambda (e) (declare (ignore e)) (return-from ,blockname nil)))
+	    (usocket:timeout-error #'(lambda (e) (declare (ignore e)) (return-from ,blockname nil)))
 	    #+sbcl
 	    (sb-int:simple-stream-error
 	     #'(lambda (e) (declare (ignore e))  (return-from ,blockname nil))))
 	 ,@body))))
+
+(defmethod hunchentoot:maybe-invoke-debugger ((condition usocket:timeout-error))
+   "Ignored timeout-errors as they are the norm."
+   nil)
 
 (defmacro maybe-ignoring-errors (&body body)
   (let ((blockname (gensym "maybe-ignore-errors-block")))
@@ -36,9 +41,13 @@ lisp, but this variable will only be bound to one of them.")
 			  (invoke-debugger e)))))
 	 (ignoring-network-errors ,@body)))))
        
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun webfunk-declarations ()
+    '(declare (optimize (debug 3)))))
 
 (defmethod hunchentoot:process-connection ((hunchentoot:*acceptor* webfunk-acceptor) (socket t))
   (declare (ignore socket))
+  #.(webfunk-declarations)
   (maybe-ignoring-errors (call-next-method)))
 
 (defmethod hunchentoot:acceptor-request-dispatcher ((hunchentoot:*acceptor* webfunk-acceptor))
