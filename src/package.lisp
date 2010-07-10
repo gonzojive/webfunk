@@ -19,6 +19,9 @@
    ;; web functions
    #:web-function
 
+   #:remove-web-function
+   #:delete-web-package
+
    #:web-function-href
    #:href
 
@@ -32,6 +35,10 @@
    #:*catch-errors-p*
    #:start-http-server
    #:stop-http-server
-   #:webfunk-acceptor))
+   #:webfunk-acceptor
+   
+   ;; types
+;   #:json-encoded))
+   ))
 
 (in-package :webfunk)

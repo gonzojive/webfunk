@@ -83,8 +83,11 @@ Otherwise returns NIL."))
 
 (defun find-web-package (name)
   "Finds the WEB-PACKAGE of the given name."
-  (when (not (stringp name)) (setf name (string name)))
-  (find name *web-packages* :key #'web-package-name :test #'string-equal))
+  (typecase name
+    (web-package name)
+    (t 
+       (when (not (stringp name)) (setf name (string name)))
+       (find name *web-packages* :key #'web-package-name :test #'string-equal))))
 
 (defun delete-web-packgage (name)
   "Deletes the WEB-PACKAGE of the given NAME."
@@ -268,6 +271,16 @@ OPTION ::= (:uri STRING) | (:uri-aliases STRING*) | (:package-class package-clas
 (defmacro webpackage (defined-package-name &body options)
   `(web-defpackage defined-package-name ,@options))
 
+(defun delete-web-package (package)
+  "Unregisters the web-package from the webfunk system."
+  (let ((web-package (the web-package (find-web-package package))))
+    (removef web-package *lisp-package-web-package-alist*
+             :key #'cdr)
+    (removef web-package *web-packages*
+             :key #'cdr)
+    (when (eql web-package *root-web-package*)
+      (setf *root-web-package* nil))))
+
 (defun make-web-package (web-package-class &rest rest &key name lisp-packages &allow-other-keys)
   "Creates a web package as if by MAKE-INSTANCE, except it will
 not instantiate a new package if one was found with the same name.
@@ -304,6 +317,7 @@ INIT-FORM-FUNCTION"
 (defvar *content-type-keyword-string-alist*
   `((:html . "text/html")
     (:css . "text/css")
+    (:text . "text/plain")
     (:javascript . "text/javascript")
     (:jpeg . "image/jpeg")
     (:gif . "image/gif")
@@ -388,6 +402,11 @@ or a keyword symbol.
 	   ,%fn)))))
        ;; unfinished implementation
 
+(defun remove-web-function (symbol web-package)
+  "Removes the said web function from the web package."
+  (removef (web-package-functions (find-web-package web-package))
+           (symbol-function  symbol)))
+
 (defun my-make-keyword (string &key (destructivep nil))
   "Interns the upcased version of STRING into the KEYWORD package.
 Uses NSTRING-UPCASE if DESTRUCTIVEP is true.  Returns NIL if STRING is
@@ -416,6 +435,7 @@ NIL unconditionally."
     (integer (ignore-errors (parse-integer param-string :junk-allowed t)))
     (keyword (my-make-keyword param-string))
     (boolean t)
+    (:json (json:decode-json-from-string param-string))
     (otherwise (error "Unsupported parameter conversion type: ~A" param-type))))
 
 (defun compute-simple-parameter (parameter-name type parameter-reader)

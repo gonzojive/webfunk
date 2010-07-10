@@ -81,7 +81,7 @@ passes ADDITIONAL-ARGUMENTS to the function."))
 	    (values (web-package-default-function-name web-package) rest-of-uri)))
     (let ((*web-package* web-package))
       (if fn
-	  (web-function-call-with-request fn request :additional-arguments (list :rest-of-uri new-rest-of-uri))
+          (web-function-call-with-request fn request :additional-arguments (list :rest-of-uri new-rest-of-uri))
 	  (format nil "No web-function found for '~A'. (Options are ~{'~A' ~})"
 		  (car rest-of-uri)
 		  (mapcar #'(lambda (fn) (hunchentoot:escape-for-html (string-downcase (string (web-function-name fn)))))
