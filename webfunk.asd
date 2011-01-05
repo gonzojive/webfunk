@@ -19,7 +19,8 @@
 ;			 (:file "heap" :depends-on ("log"))
 			 ;;(:file "sails" :depends-on ("package"))
 	       )))
-  :depends-on ("hunchentoot" "cl-ppcre" "closer-mop" "parse-number" "anaphora" "alexandria" "puri"))
+  :depends-on ("hunchentoot" "cl-ppcre" "closer-mop" "parse-number" "anaphora" "alexandria" "puri"
+                             "cl-json"))
 
 
 (defsystem webfunk-scripts

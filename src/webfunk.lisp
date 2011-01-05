@@ -228,7 +228,12 @@ merges all the options with the same car together.  So it will return something 
 
 (defmacro web-defpackage (defined-package-name &body options)
   "Defines a WEB-PACKAGE.  Options is a list of options.  An option takes the form
-OPTION ::= (:uri STRING) | (:uri-aliases STRING*) | (:package-class package-class-name)
+OPTION ::= (:uri STRING)
+         | (:uri-aliases STRING*)
+         | (:package-class package-class-name)
+         | (:rootp ROOTP)
+         | (:root-function-name ROOT-FUNCTION-NAME)
+         | (:default-function-name 404-FUNCTION-NAME)
 
 :uri specifies the URI/resource locator for the package being defined
 :uri-aliases specifies a list of alternative URIs that also identify this package
@@ -320,6 +325,7 @@ INIT-FORM-FUNCTION"
     (:text . "text/plain")
     (:javascript . "text/javascript")
     (:jpeg . "image/jpeg")
+    (:swf . "application/x-shockwave-flash")
     (:gif . "image/gif")
     (:png . "image/png")))
     
